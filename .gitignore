@@ -1,0 +1,18 @@
+# Virtual environment
+.venv/
+
+# PyCharm project files
+.idea/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Logs and checkpoints
+logs/
+checkpoints/
+
+# Data files
+data/
+*.csv
+*.h5
