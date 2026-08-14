@@ -2,8 +2,11 @@
 
 torch==2.13.0+cu126
 torchvision==0.28.0+cu126
+opencv-python
 omegaconf
 matplotlib
 numpy
 pandas
+kaggle
 kagglehub
+pycocotools
