@@ -1,10 +1,7 @@
 import os
 import cv2
-import json
 import random
 import zipfile
-import matplotlib.pyplot as plt
-import matplotlib.patches as patches
 
 from utils import *
 
@@ -71,6 +68,12 @@ class SolarDataset(Dataset):
     def __getitem__(self, idx):
         idx_coco = self.images_idx_coco[idx]
 
+        if self.mode == 'eval':
+            image_path = os.path.join(self.current_images_path, str(self.images[idx]))
+            image_gray = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+
+            return image_gray, None, None
+
         try:
             metadata = self.coco.loadImgs(idx_coco)[0]
         except Exception:
@@ -100,7 +103,7 @@ class SolarDataset(Dataset):
 
     def get_random_image(self):
         idx = random.randint(0, len(self.images) - 1)
-        return self.images[idx]
+        return self[idx]
 
 
     def get_image_by_filename(self, filename : str):
@@ -112,6 +115,9 @@ class SolarDataset(Dataset):
         except Exception:
             image_path = os.path.join(self.current_images_path, filename)
             image_gray = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+
+        if self.mode == 'eval':
+            return image_gray, None, None
 
         metadata = next((img for img in self.coco.dataset['images'] if img['file_name'] == filename), None)
 
@@ -130,8 +136,12 @@ class SolarDataset(Dataset):
     def train(self):
         self.mode = 'train'
         self.current_images_path = self.train_images_path
+        self.images_path = glob(os.path.join(self.current_images_path, '*.jpeg'))
+        self.images = sorted(os.path.basename(p) for p in self.images_path)
 
 
-    def test(self):
-        self.mode = 'test'
+    def eval(self):
+        self.mode = 'eval'
         self.current_images_path = self.test_images_path
+        self.images_path = glob(os.path.join(self.current_images_path, '*.jpeg'))
+        self.images = sorted(os.path.basename(p) for p in self.images_path)
