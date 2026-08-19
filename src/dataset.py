@@ -2,11 +2,13 @@ import os
 import cv2
 import random
 import zipfile
+import torch
+import numpy as np
 
 from utils import *
 
 from kaggle.api.kaggle_api_extended import KaggleApi
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset
 from glob import glob
 from pycocotools.coco import COCO
 
@@ -62,18 +64,29 @@ class SolarDataset(Dataset):
         self.images = sorted(os.path.basename(p) for p in self.images_path)
 
         self.coco = COCO(labels_json_path)
+        print("Images in JSON:", len(self.coco.dataset.get('images', [])))
+        print("Annotations in JSON:", len(self.coco.dataset.get('annotations', [])))
+        print("Categories in JSON:", len(self.coco.dataset.get('categories', [])))
         self.images_idx_coco = self.coco.getImgIds()
 
 
     def __getitem__(self, idx):
-        idx_coco = self.images_idx_coco[idx]
-
         if self.mode == 'eval':
-            image_path = os.path.join(self.current_images_path, str(self.images[idx]))
-            image_gray = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+            filename = self.images[idx]
 
-            return image_gray, None, None
+            image = cv2.imread(os.path.join(self.current_images_path, str(filename)), cv2.IMREAD_GRAYSCALE)
+            if image is None:
+                raise FileNotFoundError(f"Could not load test image: {filename}")
 
+            if self.transform:
+                augmented = self.transform(image=image)
+                image = augmented['image']
+            else:
+                image = torch.from_numpy(image).float().unsqueeze(0) / 255.0
+
+            return image, None, {'file_name': filename}
+
+        idx_coco = self.images_idx_coco[idx]
         try:
             metadata = self.coco.loadImgs(idx_coco)[0]
         except Exception:
@@ -82,23 +95,37 @@ class SolarDataset(Dataset):
         image_path = os.path.join(self.current_images_path, metadata['file_name'])
         image_gray = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
 
+        mask = self._generate_mask(metadata, idx_coco)
+
         if self.transform:
-            image_gray = self.transform(image_gray)
+            augmented = self.transform(image=image_gray, mask=mask)
+            image = augmented['image']
+            mask = augmented['mask']
+        else:
+            image = torch.from_numpy(image_gray).float().unsqueeze(0) / 255.0
+            mask = torch.from_numpy(mask).long()
 
-        if image_gray is None:
-            raise FileNotFoundError(f"Couldn't open {image_path}. Mode: {self.mode}")
+        if isinstance(mask, torch.Tensor):
+            if mask.ndim == 2:
+                mask = mask.unsqueeze(0).float()
+            elif mask.ndim == 3 and mask.shape[0] != 1:
+                mask = mask.permute(2, 0, 1).float()
 
-        try:
-            ann_ids = self.coco.getAnnIds(imgIds=[idx_coco])
-            anns = self.coco.loadAnns(ann_ids)
-        except Exception:
-            anns = [ann for ann in self.coco.dataset['annotations'] if ann['image_id'] == idx_coco]
-
-        return image_gray, anns, metadata
+        return image, mask, metadata
 
 
     def __len__(self):
         return len(self.images)
+
+
+    def _generate_mask(self, meta, idx):
+        mask = np.zeros([meta['height'], meta['width']], dtype=np.uint8)
+        anns_ids = self.coco.getAnnIds(imgIds=[idx])
+        anns = self.coco.loadAnns(anns_ids)
+        for ann in anns:
+            mask = np.maximum(mask, self.coco.annToMask(ann))
+
+        return mask
 
 
     def get_random_image(self):
@@ -106,31 +133,13 @@ class SolarDataset(Dataset):
         return self[idx]
 
 
-    def get_image_by_filename(self, filename : str):
-        if filename not in self.images and filename not in self.images_path:
-            raise FileNotFoundError(f'File {filename} not found in SolarDataset. Mode: {self.mode}')
-
-        try:
-            image_gray = cv2.imread(filename, cv2.IMREAD_GRAYSCALE)
-        except Exception:
-            image_path = os.path.join(self.current_images_path, filename)
-            image_gray = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
-
-        if self.mode == 'eval':
-            return image_gray, None, None
-
+    def get_image_by_filename(self, filename: str):
         metadata = next((img for img in self.coco.dataset['images'] if img['file_name'] == filename), None)
+        if metadata is None:
+            raise FileNotFoundError(f"Image {filename} not found in COCO annotations.")
 
-        if self.transform:
-            image_gray = self.transform(image_gray)
-
-        try:
-            ann_ids = self.coco.getAnnIds(imgIds=[metadata['id']])
-            anns = self.coco.loadAnns(ann_ids)
-        except Exception:
-            anns = [ann for ann in self.coco.dataset['annotations'] if ann['image_id'] == metadata['id']]
-
-        return image_gray, anns, metadata
+        idx = self.images_idx_coco.index(metadata['id'])
+        return self[idx]
 
 
     def train(self):
@@ -145,3 +154,38 @@ class SolarDataset(Dataset):
         self.current_images_path = self.test_images_path
         self.images_path = glob(os.path.join(self.current_images_path, '*.jpeg'))
         self.images = sorted(os.path.basename(p) for p in self.images_path)
+#
+#
+# root = get_project_root()
+# pipe = root / 'data' / 'MAGFiLO_1.0_Kaggle_2026'
+# train = pipe / 'train' / 'train_images'
+# elabels = pipe / 'train' / 'MAGFiLO_1.0_Annotations_kaggle2026_train.json'
+# test = pipe / 'test' / 'test_images'
+#
+# dataset = SolarDataset(
+#     train_images_path=train,
+#     test_images_path=test,
+#     labels_json_path=elabels,
+# )
+#
+# image, mask, meta = dataset.get_image_by_filename('20110109104734Ch.jpeg')
+#
+# img = (image.squeeze(0).numpy() * 255).astype(np.uint8)
+# msk = (mask.squeeze(0).numpy() * 255).astype(np.uint8)
+#
+# # Перетворюємо grayscale у BGR
+# img_bgr = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+#
+# # Накладаємо маску червоним
+# img_bgr[msk > 0] = [0, 0, 255]
+#
+# cv2.imshow("Image with mask", img_bgr)
+# cv2.waitKey(0)
+# cv2.destroyAllWindows()
+#
+# print("meta file:", meta.get('file_name'))
+# print("image shape:", img.shape)
+# print("mask shape:", msk.shape)
+# print("mask unique values:", np.unique(msk))
+# print("mask sum:", msk.sum())
+
