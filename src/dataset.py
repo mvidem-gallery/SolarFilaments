@@ -1,6 +1,7 @@
 import os
 import cv2
 import json
+import random
 import zipfile
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
@@ -73,7 +74,7 @@ class SolarDataset(Dataset):
         try:
             metadata = self.coco.loadImgs(idx_coco)[0]
         except Exception:
-            metadata = next(img for img in self.coco.dataset['images'] if img['id'] == idx_coco)
+            metadata = next((img for img in self.coco.dataset['images'] if img['id'] == idx_coco), None)
 
         image_path = os.path.join(self.current_images_path, metadata['file_name'])
         image_gray = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
@@ -82,7 +83,7 @@ class SolarDataset(Dataset):
             image_gray = self.transform(image_gray)
 
         if image_gray is None:
-            raise FileNotFoundError(f"Не вдалося відкрити {image_path}")
+            raise FileNotFoundError(f"Couldn't open {image_path}. Mode: {self.mode}")
 
         try:
             ann_ids = self.coco.getAnnIds(imgIds=[idx_coco])
@@ -97,6 +98,35 @@ class SolarDataset(Dataset):
         return len(self.images)
 
 
+    def get_random_image(self):
+        idx = random.randint(0, len(self.images) - 1)
+        return self.images[idx]
+
+
+    def get_image_by_filename(self, filename : str):
+        if filename not in self.images and filename not in self.images_path:
+            raise FileNotFoundError(f'File {filename} not found in SolarDataset. Mode: {self.mode}')
+
+        try:
+            image_gray = cv2.imread(filename, cv2.IMREAD_GRAYSCALE)
+        except Exception:
+            image_path = os.path.join(self.current_images_path, filename)
+            image_gray = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+
+        metadata = next((img for img in self.coco.dataset['images'] if img['file_name'] == filename), None)
+
+        if self.transform:
+            image_gray = self.transform(image_gray)
+
+        try:
+            ann_ids = self.coco.getAnnIds(imgIds=[metadata['id']])
+            anns = self.coco.loadAnns(ann_ids)
+        except Exception:
+            anns = [ann for ann in self.coco.dataset['annotations'] if ann['image_id'] == metadata['id']]
+
+        return image_gray, anns, metadata
+
+
     def train(self):
         self.mode = 'train'
         self.current_images_path = self.train_images_path
@@ -105,50 +135,3 @@ class SolarDataset(Dataset):
     def test(self):
         self.mode = 'test'
         self.current_images_path = self.test_images_path
-
-# metadata = json.load(open(str(get_project_root() / 'data' \
-#   / 'MAGFiLO_1.0_Kaggle_2026' / 'train' / 'MAGFiLO_1.0_Annotations_kaggle2026_train.json')))
-#
-# print(metadata.keys())
-# print(metadata['images'][1].keys())
-# for i in range(100):
-#     print(metadata['annotations'][i]['image_id'])
-
-import random
-
-# Шлях до JSON з анотаціями
-ann_file = Path(get_project_root()) / "data" / "MAGFiLO_1.0_Kaggle_2026" / "train" / "MAGFiLO_1.0_Annotations_kaggle2026_train.json"
-coco = COCO(ann_file)
-
-# Отримати всі image_ids (рядкові)
-image_ids = coco.getImgIds()
-img_id = random.choice(image_ids)
-
-# Знайти інформацію про зображення вручну (бо id рядковий)
-img_info = next(img for img in coco.dataset['images'] if img['id'] == img_id)
-
-# Шлях до папки з картинками
-img_dir = Path(get_project_root()) / "data" / "MAGFiLO_1.0_Kaggle_2026" / "train" / "train_images"
-img_path = img_dir / img_info['file_name']
-
-# Завантажуємо картинку
-image = plt.imread(img_path)
-
-# Отримуємо анотації для цього зображення
-ann_ids = coco.getAnnIds(imgIds=[img_id])
-anns = coco.loadAnns(ann_ids)
-
-# Відображаємо картинку
-fig, ax = plt.subplots(1, figsize=(10, 10))
-ax.imshow(image)
-ax.axis('off')
-
-# Малюємо баундінг бокси
-for ann in anns:
-    if 'bbox' in ann:
-        x, y, w, h = ann['bbox']
-        rect = patches.Rectangle((x, y), w, h, linewidth=2,
-                                 edgecolor='red', facecolor='none')
-        ax.add_patch(rect)
-
-plt.show()
