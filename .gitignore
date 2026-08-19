@@ -13,6 +13,8 @@ logs/
 checkpoints/
 
 # Data files
-data/
+data/*
+!data/.gitkeep
+
 *.csv
 *.h5
