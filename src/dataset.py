@@ -8,7 +8,7 @@ import numpy as np
 from utils import *
 
 from kaggle.api.kaggle_api_extended import KaggleApi
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DataLoader
 from glob import glob
 from pycocotools.coco import COCO
 
@@ -46,45 +46,48 @@ class SolarDataset(Dataset):
     COCO-format, pycocotools lib was used; structure of the file can be
     observed in https://www.kaggle.com/competitions/filament-segmentation-2026/data).
     """
+
+    # Заміна методу __init__ у класі SolarDataset
     def __init__(
             self,
-            train_images_path : str | Path,
-            labels_json_path : str | Path,
-            test_images_path : str | Path,
-            mode : str = 'train',
-            transform=None):
+            train_images_path: str | Path,
+            labels_json_path: str | Path,
+            mode: str = 'train',
+            transform=None,
+            valid_ids: list = None):
         self.train_images_path = train_images_path
         self.labels_json_path = labels_json_path
-        self.test_images_path = test_images_path
         self.transform = transform
         self.mode = mode
 
-        self.current_images_path = train_images_path if self.mode == 'train' else test_images_path
-        self.images_path = glob(os.path.join(self.current_images_path, '*.jpeg'))
-        self.images = sorted(os.path.basename(p) for p in self.images_path)
-
         self.coco = COCO(labels_json_path)
-        print("Images in JSON:", len(self.coco.dataset.get('images', [])))
-        print("Annotations in JSON:", len(self.coco.dataset.get('annotations', [])))
-        print("Categories in JSON:", len(self.coco.dataset.get('categories', [])))
-        self.images_idx_coco = self.coco.getImgIds()
+
+        all_ids = self.coco.getImgIds()
+        self.images_idx_coco = valid_ids if valid_ids is not None else all_ids
+
+        # Синхронізація масиву імен файлів з обраними ID для коректної роботи __len__# Побудувати мапу id -> file_name
+        id2file = {img['id']: img['file_name'] for img in self.coco.dataset['images']}
+
+        # Тепер отримати список файлів для потрібних id
+        self.images = [id2file[img_id] for img_id in self.images_idx_coco if img_id in id2file]
+        print(f"[{mode.upper()}] Images loaded: {len(self.images)}")
 
 
     def __getitem__(self, idx):
-        if self.mode == 'eval':
-            filename = self.images[idx]
-
-            image = cv2.imread(os.path.join(self.current_images_path, str(filename)), cv2.IMREAD_GRAYSCALE)
-            if image is None:
-                raise FileNotFoundError(f"Could not load test image: {filename}")
-
-            if self.transform:
-                augmented = self.transform(image=image)
-                image = augmented['image']
-            else:
-                image = torch.from_numpy(image).float().unsqueeze(0) / 255.0
-
-            return image, None, {'file_name': filename}
+        # if self.mode == 'eval':
+        #     filename = self.images[idx]
+        #
+        #     image = cv2.imread(os.path.join(self.train_images_path, str(filename)), cv2.IMREAD_GRAYSCALE)
+        #     if image is None:
+        #         raise FileNotFoundError(f"Could not load test image: {filename}")
+        #
+        #     if self.transform:
+        #         augmented = self.transform(image=image)
+        #         image = augmented['image']
+        #     else:
+        #         image = torch.from_numpy(image).float().unsqueeze(0) / 255.0
+        #
+        #     return image, None, {'file_name': filename}
 
         idx_coco = self.images_idx_coco[idx]
         try:
@@ -92,7 +95,7 @@ class SolarDataset(Dataset):
         except Exception:
             metadata = next((img for img in self.coco.dataset['images'] if img['id'] == idx_coco), None)
 
-        image_path = os.path.join(self.current_images_path, metadata['file_name'])
+        image_path = os.path.join(self.train_images_path, metadata['file_name'])
         image_gray = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
 
         mask = self._generate_mask(metadata, idx_coco)
@@ -106,10 +109,7 @@ class SolarDataset(Dataset):
             mask = torch.from_numpy(mask).long()
 
         if isinstance(mask, torch.Tensor):
-            if mask.ndim == 2:
-                mask = mask.unsqueeze(0).float()
-            elif mask.ndim == 3 and mask.shape[0] != 1:
-                mask = mask.permute(2, 0, 1).float()
+            mask = mask.long()  # Без unsqueeze та float()
 
         return image, mask, metadata
 
@@ -142,18 +142,13 @@ class SolarDataset(Dataset):
         return self[idx]
 
 
-    def train(self):
-        self.mode = 'train'
-        self.current_images_path = self.train_images_path
-        self.images_path = glob(os.path.join(self.current_images_path, '*.jpeg'))
-        self.images = sorted(os.path.basename(p) for p in self.images_path)
+def build_dataloader(dataset, config):
+    dataloader = DataLoader(
+        dataset,
+        **config.dataloader,
+    )
 
-
-    def eval(self):
-        self.mode = 'eval'
-        self.current_images_path = self.test_images_path
-        self.images_path = glob(os.path.join(self.current_images_path, '*.jpeg'))
-        self.images = sorted(os.path.basename(p) for p in self.images_path)
+    return dataloader
 #
 #
 # root = get_project_root()

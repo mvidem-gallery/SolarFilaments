@@ -1,5 +1,7 @@
-def run():
+from dataset import *
+from train import *
+
+
+def run(config, path):
     pass
 
-if __name__ == '__main__':
-    run()
