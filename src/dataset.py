@@ -174,7 +174,7 @@ def build_dataloader(dataset, config):
 # # Накладаємо маску червоним
 # img_bgr[msk > 0] = [0, 0, 255]
 #
-# cv2.imshow("Image with mask", img_bgr)
+
 # cv2.waitKey(0)
 # cv2.destroyAllWindows()
 #

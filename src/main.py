@@ -11,7 +11,7 @@ if __name__ == "__main__":
     set_seed(config.seed)
 
     if config.device == "cuda" and not torch.cuda.is_available():
-        raise RuntimeError("Cuda is not available. Project is heavy and requires cuda!")
+        raise RuntimeError("CUDA is not available. Project is heavy and requires cuda!")
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
     model = load_model(config, device)

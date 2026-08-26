@@ -1,0 +1,23 @@
+services:
+  cv-project:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: filaments:firstatt
+    container_name: cv-container
+    runtime: nvidia        # якщо потрібен GPU
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    volumes:
+      - ./src:/app/src        # твій код
+      - ./data:/app/data      # датасет
+      - ./checkpoints:/app/checkpoints  # чекпоінти
+      - ./config.yaml:/app/config.yaml
+      - ~/.kaggle:/root/.kaggle
+    working_dir: /app/src
+    command: ["python3", "main.py"]
