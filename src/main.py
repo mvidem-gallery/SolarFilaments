@@ -19,12 +19,10 @@ if __name__ == "__main__":
     if not data_exists('data/'):
         download_data()
 
-    # Зчитування та перемішування пулу ідентифікаторів
     coco = COCO(path.data.train.labels_json_path)
     all_img_ids = coco.getImgIds()
     random.shuffle(all_img_ids)
 
-    # Розрахунок індексу розбиття (80% тренування, 20% валідація)
     split_idx = int(len(all_img_ids) * 0.8)
     train_ids = all_img_ids[:split_idx]
     val_ids = all_img_ids[split_idx:]
