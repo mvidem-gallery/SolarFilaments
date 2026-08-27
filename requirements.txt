@@ -5,8 +5,10 @@ torchvision==0.28.0+cu126
 opencv-python
 omegaconf
 matplotlib
+tqdm
 numpy
 pandas
 kaggle
 kagglehub
 pycocotools
+albumentations
