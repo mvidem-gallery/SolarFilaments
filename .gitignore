@@ -16,5 +16,9 @@ checkpoints/
 data/*
 !data/.gitkeep
 
+src/visualize.py
+
 *.csv
 *.h5
+filaments.tar
+weights.pth

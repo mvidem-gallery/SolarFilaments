@@ -3,7 +3,7 @@ import yaml
 from utils import get_project_root
 from omegaconf import OmegaConf
 
-config = yaml.load(open('../config.yaml'), Loader=yaml.FullLoader)
+config = yaml.load(open('config.yaml'), Loader=yaml.FullLoader)
 config = OmegaConf.create(config)
 
 root = get_project_root() # a Path object
@@ -15,7 +15,7 @@ path = {
             'labels_json_path' : dataset_path / 'train' / 'MAGFiLO_1.0_Annotations_kaggle2026_train.json',
         },
         'test' : {
-            'test_images_path' : dataset_path / 'test' / 'test_images_path',
+            'test_images_path' : dataset_path / 'test' / 'test_images',
         }
     },
     'weights': root / 'weights.pth'
