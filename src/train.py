@@ -1,4 +1,5 @@
 import os
+import cv2
 import torch
 import torch.nn as nn
 
@@ -6,7 +7,7 @@ from tqdm import tqdm
 from torchvision import models
 from torch.optim import Adam, lr_scheduler
 
-from sliding_window import sliding_window_logits
+from sliding_window import sliding_window_logits, sliding_window_predict
 
 
 def load_model(config, device):
