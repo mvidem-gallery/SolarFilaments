@@ -7,9 +7,10 @@ import torch
 from pycocotools import mask as maskUtils
 from tqdm import tqdm
 
-from augmentations import val_transform
+from augmentations import test_transform
 from config import config, path
-from dataset import EvalDataset, build_eval_dataloader
+from dataset import EvalDataset
+from sliding_window import sliding_window_predict
 from train import load_model
 
 MIN_INSTANCE_AREA = 5  # drop tiny noise blobs when splitting into instances
@@ -40,27 +41,30 @@ def split_instances(binary_mask, min_area=MIN_INSTANCE_AREA):
     return instances
 
 
-def create_submission(model, device, loader, original_sizes, output_csv="submission.csv"):
+def create_submission(model, device, dataset, output_csv="submission.csv", tile_size=512, stride=384, num_classes=2):
+    """
+    dataset: an EvalDataset instance, iterated one image at a time (not
+    batched) since test images can have different resolutions and
+    sliding-window inference naturally works image-by-image.
+    """
     model.eval()
     rows = []
 
-    with torch.no_grad():
-        for images, metas in tqdm(loader, desc="Predicting"):
-            images = images.to(device)
-            outputs = model(images)["out"]
-            preds = torch.argmax(outputs, dim=1).cpu().numpy().astype(np.uint8)
+    for i in tqdm(range(len(dataset)), desc="Predicting"):
+        image, meta = dataset[i]
+        image = image.to(device)
 
-            file_names = metas["file_name"]
-            for pred_mask, file_name in zip(preds, file_names):
-                orig_h, orig_w = original_sizes[file_name]
-                # Model runs on a resized (512x512) input, so scale the
-                # prediction back up to the original resolution first.
-                mask = cv2.resize(pred_mask, (orig_w, orig_h), interpolation=cv2.INTER_NEAREST)
+        # Sliding-window inference already returns the mask at the
+        # image's ORIGINAL resolution, so no resize-back step is needed.
+        mask = sliding_window_predict(
+            model, image, device,
+            tile_size=tile_size, stride=stride, num_classes=num_classes,
+        )
 
-                stem = os.path.splitext(file_name)[0]
-                for i, instance_mask in enumerate(split_instances(mask), start=1):
-                    filament_id = f"{stem}_{i}"
-                    rows.append((filament_id, mask_to_rle(instance_mask)))
+        stem = os.path.splitext(meta["file_name"])[0]
+        for idx, instance_mask in enumerate(split_instances(mask), start=1):
+            filament_id = f"{stem}_{idx}"
+            rows.append((filament_id, mask_to_rle(instance_mask)))
 
     with open(output_csv, "w", newline="") as f:
         writer = csv.writer(f)
@@ -78,16 +82,7 @@ if __name__ == "__main__":
 
     test_dataset = EvalDataset(
         test_images_path=path.data.test.test_images_path,
-        transform=val_transform,
+        transform=test_transform,
     )
-    test_loader = build_eval_dataloader(test_dataset, config)
 
-    # Original resolutions are needed to resize predictions back before
-    # encoding RLE, since inference itself runs on resized 512x512 images.
-    original_sizes = {}
-    for file_name in test_dataset.images:
-        img_path = os.path.join(str(test_dataset.test_images_path), file_name)
-        h, w = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE).shape
-        original_sizes[file_name] = (h, w)
-
-    create_submission(model, device, test_loader, original_sizes)
+    create_submission(model, device, test_dataset, num_classes=config.num_classes)

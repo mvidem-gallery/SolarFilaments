@@ -1,12 +1,14 @@
 import argparse
 import torch
 import random
+
+from torch.utils.data import DataLoader
 from pycocotools.coco import COCO
 from utils import set_seed, data_exists
 from config import config, path
-from dataset import download_data, SolarDataset, build_dataloader, EvalDataset, build_eval_dataloader
+from dataset import download_data, SolarDataset, build_dataloader, EvalDataset
 from train import train, load_model, predict
-from augmentations import train_transform, val_transform
+from augmentations import train_transform, val_transform, test_transform
 
 
 def parse_args():
@@ -22,6 +24,9 @@ def parse_args():
 if __name__ == "__main__":
     args = parse_args()
     set_seed(config.seed)
+
+    if config.device == "cuda" and not torch.cuda.is_available():
+        raise RuntimeError("CUDA is not available. Project is heavy and requires cuda!")
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
     model = load_model(config, device)
@@ -31,16 +36,18 @@ if __name__ == "__main__":
 
         test_dataset = EvalDataset(
             test_images_path=path.data.test.test_images_path,
-            transform=val_transform,
+            transform=test_transform,
         )
-        test_loader = build_eval_dataloader(test_dataset, config)
 
-        predict(config, model, device, test_loader, output_dir="predictions")
+        predict(
+            config=config,
+            model=model,
+            device=device,
+            dataset=test_dataset,
+            output_dir='predictions'
+        )
 
     else:
-        if config.device == "cuda" and not torch.cuda.is_available():
-            raise RuntimeError("CUDA is not available. Project is heavy and requires cuda!")
-
         if not data_exists('data/'):
             download_data()
 
@@ -67,9 +74,10 @@ if __name__ == "__main__":
             mode='val'
         )
 
-        # val_config = config.dataloader.copy()
-        # val_config['shuffle'] = False
-        val_dataloader = build_dataloader(val_dataset, config)
+        # batch_size=1: validation images are now kept at full resolution
+        # (no crop/resize) for sliding-window inference, so they can't
+        # necessarily be stacked into a batch > 1.
+        val_dataloader = DataLoader(val_dataset, batch_size=1, shuffle=False)
 
         train(
             config=config,
