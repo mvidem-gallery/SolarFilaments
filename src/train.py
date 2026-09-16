@@ -1,5 +1,7 @@
+import json
 import os
 import cv2
+
 import torch
 import torch.nn as nn
 
@@ -96,7 +98,13 @@ def compute_iou(preds, targets, num_classes, eps=1e-7):
     return sum(ious) / len(ious) if ious else 0.0
 
 
-def train(config, model, path, device, train_loader, val_loader=None):
+def train(config, model, path, device, train_loader, val_loader=None, val_every=2, val_last_n_epochs=5):
+    """
+    val_every: validate every `val_every` epochs (e.g. 2 = every 2nd epoch).
+    val_last_n_epochs: always validate during the final N epochs, regardless
+        of `val_every`, so the final checkpoint decision is based on the
+        freshest possible metric.
+    """
 
     criterion = CEDiceLoss(num_classes=config.num_classes)
     optimizer = Adam(model.parameters(), lr=config.learning_rate)
@@ -111,6 +119,17 @@ def train(config, model, path, device, train_loader, val_loader=None):
     best_val_iou = -1.0
     best_train_loss = float("inf")
     best_model_path = path.weights
+
+    # Path where per-epoch loss/IoU history is saved, for later plotting
+    # with plot_history.py. Kept next to the model weights.
+    history_path = os.path.splitext(str(path.weights))[0] + "_history.json"
+    history = {"epoch": [], "train_loss": []}
+    if val_loader is not None:
+        # val_epoch tracks WHICH epochs actually ran validation, since that's
+        # no longer every epoch — needed to align val_loss/val_iou on plots.
+        history["val_epoch"] = []
+        history["val_loss"] = []
+        history["val_iou"] = []
 
     for epoch in range(num_epochs):
         model.train()
@@ -133,21 +152,45 @@ def train(config, model, path, device, train_loader, val_loader=None):
         epoch_loss /= len(train_loader.dataset)
         print(f"Epoch {epoch+1}, Train Loss: {epoch_loss:.4f}")
 
-        if val_loader is not None:
+        history["epoch"].append(epoch + 1)
+        history["train_loss"].append(epoch_loss)
+
+        epoch_num = epoch + 1
+        in_final_stretch = epoch_num > num_epochs - val_last_n_epochs
+        should_validate = val_loader is not None and (epoch_num % val_every == 0 or in_final_stretch)
+
+        if should_validate:
             val_loss, val_iou = evaluate(model, val_loader, criterion, device, config.num_classes, tile_size, tile_stride)
             scheduler.step(val_loss)
-            print(f"Epoch {epoch+1}, Val Loss: {val_loss:.4f}, Val IoU: {val_iou:.4f}")
+            print(f"Epoch {epoch_num}, Val Loss: {val_loss:.4f}, Val IoU: {val_iou:.4f}")
+
+            history["val_epoch"].append(epoch_num)
+            history["val_loss"].append(val_loss)
+            history["val_iou"].append(val_iou)
 
             if val_iou > best_val_iou:
                 best_val_iou = val_iou
                 torch.save(model.state_dict(), best_model_path)
-                print(f"Best model updated at epoch {epoch+1}, val_iou={val_iou:.4f}")
+                print(f"Best model updated at epoch {epoch_num}, val_iou={val_iou:.4f}")
+        elif val_loader is not None:
+            # Not a scheduled validation epoch: step the scheduler on train
+            # loss instead so the LR can still react between the sparser
+            # validation checkpoints.
+            scheduler.step(epoch_loss)
+            print(f"Epoch {epoch_num}: validation skipped (runs every {val_every} epochs, always in the last {val_last_n_epochs})")
         else:
             scheduler.step(epoch_loss)
             if epoch_loss < best_train_loss:
                 best_train_loss = epoch_loss
                 torch.save(model.state_dict(), best_model_path)
-                print(f"Best model updated at epoch {epoch+1}, train_loss={epoch_loss:.4f}")
+                print(f"Best model updated at epoch {epoch_num}, train_loss={epoch_loss:.4f}")
+
+        # Written every epoch (not just at the end) so history survives an
+        # interrupted run.
+        with open(history_path, "w") as f:
+            json.dump(history, f, indent=2)
+
+    print(f"Training history saved to '{history_path}'")
 
 
 def evaluate(model, val_loader, criterion, device, num_classes, tile_size=512, stride=384):
@@ -162,7 +205,7 @@ def evaluate(model, val_loader, criterion, device, num_classes, tile_size=512, s
     num_images = 0
 
     with torch.no_grad():
-        for images, masks, _ in val_loader:
+        for images, masks, _ in tqdm(val_loader, desc="Validating", leave=False):
             image = images[0].to(device)          # [C, H, W]
             mask = masks[0].to(device).long()      # [H, W]
 

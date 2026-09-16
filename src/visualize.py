@@ -3,6 +3,7 @@ from glob import glob
 
 import cv2
 import numpy as np
+from tqdm import tqdm
 
 from config import path
 
@@ -36,7 +37,7 @@ def visualize(test_images_dir=TEST_IMAGES_DIR, predictions_dir=PREDICTIONS_DIR, 
         raise RuntimeError(f"No test images found in {test_images_dir}")
 
     saved = 0
-    for image_path in image_paths:
+    for image_path in tqdm(image_paths, desc="Visualizing"):
         file_name = os.path.basename(image_path)
         mask_path = os.path.join(predictions_dir, os.path.splitext(file_name)[0] + "_mask.png")
 
