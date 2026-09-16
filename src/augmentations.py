@@ -11,12 +11,13 @@ CROP_SIZE = config.crop_size
 # a few pixels wide (or erases them), which was likely the main reason the
 # submission score was weak. Cropping preserves native pixel scale.
 train_transform = A.Compose([
-    A.PadIfNeeded(min_height=CROP_SIZE, min_width=CROP_SIZE, border_mode=0, value=0, mask_value=0),
+    A.PadIfNeeded(min_height=CROP_SIZE, min_width=CROP_SIZE, border_mode=0),
     A.RandomCrop(CROP_SIZE, CROP_SIZE),
     A.HorizontalFlip(p=0.5),
     A.VerticalFlip(p=0.5),
     A.RandomRotate90(p=0.5),
     A.RandomBrightnessContrast(p=0.2),
+    A.CLAHE(p=0.8),
     A.Normalize(),
     ToTensorV2()
 ])
