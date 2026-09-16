@@ -15,8 +15,8 @@ checkpoints/
 # Data files
 data/*
 !data/.gitkeep
-
-src/visualize.py
+visualizations
+predictions
 
 *.csv
 *.h5
