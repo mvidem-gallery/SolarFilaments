@@ -4,6 +4,9 @@ num_classes: 2
 num_epochs: 30
 learning_rate: 0.0001
 crop_size: 512
+val_subset_size: 50
+val_every: 2
+val_last_n_epoch: 5
 dataloader:
   batch_size: 16
   shuffle: False
