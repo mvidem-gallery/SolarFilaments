@@ -7,3 +7,7 @@ dataloader:
   batch_size: 16
   shuffle: False
   num_workers: 2
+eval_dataloader:
+  batch_size: 16
+  shuffle: False
+  num_workers: 2

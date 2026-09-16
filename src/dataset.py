@@ -4,6 +4,7 @@ import random
 import zipfile
 import torch
 import numpy as np
+from torch.return_types import mode
 
 from utils import *
 
@@ -11,6 +12,7 @@ from kaggle.api.kaggle_api_extended import KaggleApi
 from torch.utils.data import Dataset, DataLoader
 from glob import glob
 from pycocotools.coco import COCO
+from matplotlib import pyplot as plt
 
 
 def download_data():
@@ -74,20 +76,7 @@ class SolarDataset(Dataset):
 
 
     def __getitem__(self, idx):
-        # if self.mode == 'eval':
-        #     filename = self.images[idx]
-        #
-        #     image = cv2.imread(os.path.join(self.train_images_path, str(filename)), cv2.IMREAD_GRAYSCALE)
-        #     if image is None:
-        #         raise FileNotFoundError(f"Could not load test image: {filename}")
-        #
-        #     if self.transform:
-        #         augmented = self.transform(image=image)
-        #         image = augmented['image']
-        #     else:
-        #         image = torch.from_numpy(image).float().unsqueeze(0) / 255.0
-        #
-        #     return image, None, {'file_name': filename}
+
 
         idx_coco = self.images_idx_coco[idx]
         try:
@@ -149,6 +138,44 @@ def build_dataloader(dataset, config):
     )
 
     return dataloader
+
+
+
+class EvalDataset(Dataset):
+
+    def __init__(self, test_images_path, transform=None):
+        self.test_images_path = test_images_path
+        self.transform = transform
+        self.images_path = glob(os.path.join(test_images_path, "*.jpeg"))
+        self.images = sorted(os.path.basename(p) for p in self.images_path)
+        print(f"Images loaded: {len(self.images)}")
+
+    def __getitem__(self, idx):
+        filename = self.images[idx]
+
+        image = cv2.imread(os.path.join(self.test_images_path, str(filename)), cv2.IMREAD_GRAYSCALE)
+        if image is None:
+            raise FileNotFoundError(f"Could not load test image: {filename}")
+
+        if self.transform:
+            augmented = self.transform(image=image)
+            image = augmented['image']
+        else:
+            image = torch.from_numpy(image).float().unsqueeze(0) / 255.0
+
+        return image, {'file_name': filename}
+
+    def __len__(self):
+        return len(self.images)
+
+
+def build_eval_dataloader(dataset, config):
+    dataloader = DataLoader(
+        dataset,
+        **config.eval_dataloader,
+    )
+
+    return dataloader
 #
 #
 # root = get_project_root()
@@ -159,7 +186,6 @@ def build_dataloader(dataset, config):
 #
 # dataset = SolarDataset(
 #     train_images_path=train,
-#     test_images_path=test,
 #     labels_json_path=elabels,
 # )
 #
@@ -171,12 +197,11 @@ def build_dataloader(dataset, config):
 # # Перетворюємо grayscale у BGR
 # img_bgr = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
 #
+#
 # # Накладаємо маску червоним
 # img_bgr[msk > 0] = [0, 0, 255]
-#
-
-# cv2.waitKey(0)
-# cv2.destroyAllWindows()
+# # cv2.waitKey(0)
+# # cv2.destroyAllWindows()
 #
 # print("meta file:", meta.get('file_name'))
 # print("image shape:", img.shape)

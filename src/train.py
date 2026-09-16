@@ -1,3 +1,7 @@
+import os
+import cv2
+import numpy as np
+
 import torch
 import torch.nn as nn
 
@@ -79,6 +83,34 @@ def train(config, model, path, device, train_loader, val_loader=None):
                 torch.save(model.state_dict(), best_model_path)
                 print(f"Best model updated at epoch {epoch+1}, train_loss={epoch_loss:.4f}")
 
+
+def predict(config, model, device, loader, output_dir):
+    """
+    Runs inference on an unlabeled test set and saves each predicted
+    mask as a PNG next to the original file name.
+    """
+    model.eval()
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Scale class indices (0..num_classes-1) up to the full 0-255 range
+    # so the saved masks are actually visible when opened as images.
+    scale = 255 // max(config.num_classes - 1, 1)
+
+    saved = 0
+    with torch.no_grad():
+        for images, metas in tqdm(loader, desc="Predicting"):
+            images = images.to(device)
+
+            outputs = model(images)["out"]
+            preds = torch.argmax(outputs, dim=1).cpu().numpy().astype(np.uint8)
+
+            file_names = metas["file_name"]
+            for pred_mask, file_name in zip(preds, file_names):
+                out_name = os.path.splitext(file_name)[0] + "_mask.png"
+                cv2.imwrite(os.path.join(output_dir, out_name), pred_mask * scale)
+                saved += 1
+
+    print(f"Saved {saved} predicted masks to '{output_dir}'")
 
 def evaluate(model, val_loader, criterion, device):
     model.eval()
