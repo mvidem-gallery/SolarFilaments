@@ -69,7 +69,3 @@ def visualize(test_images_dir=TEST_IMAGES_DIR, predictions_dir=PREDICTIONS_DIR, 
         saved += 1
 
     print(f"Saved {saved} visualizations to '{output_dir}'")
-
-
-if __name__ == "__main__":
-    visualize()

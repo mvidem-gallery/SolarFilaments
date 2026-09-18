@@ -3,15 +3,10 @@ import os
 
 import cv2
 import numpy as np
-import torch
 from pycocotools import mask as maskUtils
 from tqdm import tqdm
 
-from augmentations import test_transform
-from config import config, path
-from dataset import EvalDataset
 from sliding_window import sliding_window_predict
-from train import load_model
 
 MIN_INSTANCE_AREA = 5  # drop tiny noise blobs when splitting into instances
 
@@ -72,17 +67,3 @@ def create_submission(model, device, dataset, output_csv="submission.csv", tile_
         writer.writerows(rows)
 
     print(f"Saved {len(rows)} filament rows to '{output_csv}'")
-
-
-if __name__ == "__main__":
-    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-
-    model = load_model(config, device)
-    model.load_state_dict(torch.load(path.weights, map_location=device))
-
-    test_dataset = EvalDataset(
-        test_images_path=path.data.test.test_images_path,
-        transform=test_transform,
-    )
-
-    create_submission(model, device, test_dataset, num_classes=config.num_classes)
