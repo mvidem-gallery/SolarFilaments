@@ -131,6 +131,24 @@ if __name__ == "__main__":
             # global seed) so the same images are used every validation
             # run within this training session, keeping metrics comparable
             # across epochs.
+        if config.device == "cuda" and not torch.cuda.is_available():
+            raise RuntimeError("CUDA is not available. Project is heavy and requires cuda!")
+        if not data_exists('data/'):
+            download_data()
+
+        coco = COCO(path.data.train.labels_json_path)
+        all_img_ids = coco.getImgIds()
+        random.shuffle(all_img_ids)
+
+        split_idx = int(len(all_img_ids) * 0.9)
+        train_ids = all_img_ids[:split_idx]
+        val_ids = all_img_ids[split_idx:]
+
+        # Sliding-window validation over the FULL val set is expensive
+        # (see earlier discussion), so we validate on a fixed random subset
+        # of unique images instead. Sampled once (with the global seed) so
+        # the same images are used every validation run within this
+        # training session, keeping metrics comparable across epochs.
         if len(val_ids) > config.val_subset_size:
             val_ids = random.sample(val_ids, config.val_subset_size)
 

@@ -18,8 +18,10 @@ data/*
 !data/.gitkeep
 visualizations
 predictions
-
+src/custom.py
 *.csv
 *.h5
 filaments.tar
 weights.pth
+weights_history.json
+training_curves.png
