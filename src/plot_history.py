@@ -1,12 +1,8 @@
-import argparse
 import json
-import os
 
 import matplotlib
 matplotlib.use("Agg")  # headless-safe: saves to a file, doesn't need a display
 import matplotlib.pyplot as plt
-
-from config import path
 
 
 def plot_history(history_path, output_path="training_curves.png"):
@@ -45,14 +41,3 @@ def plot_history(history_path, output_path="training_curves.png"):
     plt.savefig(output_path, dpi=150)
     plt.close(fig)
     print(f"Saved training curves to '{output_path}'")
-
-
-if __name__ == "__main__":
-    default_history_path = os.path.splitext(str(path.weights))[0] + "_history.json"
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--history", default=default_history_path, help="Path to the training history JSON file")
-    parser.add_argument("--output", default="training_curves.png", help="Where to save the resulting plot")
-    args = parser.parse_args()
-
-    plot_history(args.history, args.output)
